@@ -31,3 +31,12 @@ def test_negative_quantity_is_rejected():
     clean, rejected = clean_orders(orders)
     assert list(clean["order_id"]) == [2]
     assert list(rejected["reject_reason"]) == ["invalid_quantity"]
+
+def test_unknown_country_is_rejected():
+    orders = make_orders([
+        {"order_id": 1, "country": "Spain"},
+        {"order_id": 2, "country": "Italy"}
+    ])
+    clean, rejected = clean_orders(orders)
+    assert list(clean["order_id"]) == [2]
+    assert list(rejected["reject_reason"]) == ["unknown_country"]
