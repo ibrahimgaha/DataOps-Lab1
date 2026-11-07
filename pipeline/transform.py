@@ -21,7 +21,7 @@ def clean_orders(df):
     _flag(df, df["order_date"].isna(), "invalid_date")
     # Rule 3 - validity: quantity must be positive
     _flag(df, ~(df["quantity"] > 0), "invalid_quantity")
-    
+
     # Rule 4 - validity: unit price must be positive and at most MAX_UNIT_PRICE
     _flag(
         df,

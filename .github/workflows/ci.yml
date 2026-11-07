@@ -2,8 +2,14 @@ name: CI
 
 on:
   pull_request:
+    paths-ignore: ["**.md"]
   push:
     branches: [main]
+    paths-ignore: ["**.md"]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -16,8 +22,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install ruff
+      - run: pip install ruff sqlfluff
       - run: ruff check .
+      - run: sqlfluff lint models data_tests
 
   python-tests:
     needs: lint
@@ -34,6 +41,9 @@ jobs:
   data-quality:
     needs: python-tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -55,3 +65,11 @@ jobs:
         with:
           name: dbt-results
           path: target/run_results.json
+      - name: Comment the report on the pull request
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python report_md.py 8835.40 > "$RUNNER_TEMP/orders-report.md"
+          gh pr comment "$PR_NUMBER" --body-file "$RUNNER_TEMP/orders-report.md" --edit-last --create-if-none

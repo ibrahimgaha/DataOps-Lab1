@@ -299,3 +299,48 @@ Les CSV originaux des jours 2 et 3 manquent. Pour reproduire les deux cas, j'ai 
 La CI exécute `lint`, puis `python-tests`, puis `data-quality`. Un échec empêche les jobs dépendants de démarrer. Le dernier job ajoute le tableau de revenus au résumé et conserve `run_results.json` dans l'artefact `dbt-results`.
 
 Le workflow Nightly tourne chaque jour à 05 h 00 UTC et peut être lancé à la main. Il reconstruit le projet avec l'échantillon et conserve la documentation dbt dans l'artefact `dbt-docs`.
+
+
+## TP4 bis
+
+### Vérifier le projet sous PowerShell
+
+Exécuter depuis la racine de `dataops-lab1`. L'environnement `.venv-tp4` fournit dbt et le contrat ODCS. L'environnement `.venv-soda` garde les dépendances de Soda séparées.
+
+```powershell
+. .\.venv-tp4\Scripts\Activate.ps1
+python -m pip install pre-commit sqlfluff
+pre-commit install
+pre-commit run --all-files
+sqlfluff lint models data_tests
+python load_raw.py tests/fixtures/orders_sample.csv
+dbt build --profiles-dir .
+dbt source freshness --profiles-dir .
+python report_md.py 8835.40
+.\.venv-soda\Scripts\soda.exe scan -d shop -c soda/configuration.yml soda/checks.yml
+```
+
+Pour créer l'environnement Soda, exécuter `py -3.11 -m venv .venv-soda`, puis `.\.venv-soda\Scripts\python.exe -m pip install soda-core-duckdb`.
+
+### Les cinq défis
+
+1. **pre-commit** vérifie les fichiers avant le commit. Un import inutilisé déclenche `F401` et un fichier ajouté de 600 000 octets dépasse le seuil de 500 Ko. L'échantillon CSV est exclu du nettoyage des espaces de fin de ligne pour conserver la copie exacte du jour 1.
+2. **SQLFluff** relit le SQL DuckDB après avoir interprété les références Jinja. La règle `AM04` est désactivée pour conserver les projections `SELECT *` de ces modèles internes. La règle `ST06` est désactivée pour conserver l'ordre des colonnes transmis par le staging. Le build garde 14 succès et le total de `8835.40`.
+3. **dbt** exige les colonnes `country` et `revenue` à la sortie. Le contrôle de fraîcheur utilise `_loaded_at` et avertit après 12 heures, puis échoue après 24 heures. Pour simuler une source trop vieille, le test local a décalé l'horodatage dans un entrepôt de test. L'expérience sans `Germany` avertit sans bloquer le rapport. Avec `--store-failures`, la table d'audit montre `Germany` et le nombre de lignes concernées.
+4. **GitHub Actions** publie le total sur la pull request et annule l'exécution précédente quand une nouvelle la remplace. Le filtre Markdown regarde l'ensemble du diff d'une pull request. Un commit Markdown ajouté à une pull request qui contient du code peut donc relancer la CI. Une pull request dont le diff est entièrement Markdown est ignorée.
+5. **Soda** lit l'entrepôt sans le modifier. Ses sept contrôles vérifient le rapport et les commandes valides. Le test volontaire avec six pays échoue parce que le rapport en contient cinq. Le fichier est lisible avec DuckDB 1.5.6 dans le projet et DuckDB 1.0.0 dans l'environnement Soda.
+
+### Comparaison des outils
+
+| Outil | Quand il tourne | Ce qu'il regarde | Ce que j'en retiens |
+| --- | --- | --- | --- |
+| pre-commit | Avant chaque commit local | Les fichiers du commit | Je vois les erreurs simples avant de pousser. |
+| Ruff et SQLFluff | En local et en CI | Le Python et le SQL | Les mêmes règles de style s'appliquent à toute l'équipe. |
+| Contrat ODCS | Avant le chargement | La forme du fichier fournisseur | Un renommage de colonne devient un échec explicite. |
+| Pandera | Au chargement | Le fichier entier | Je peux refuser un lot dont les prix ont changé d'unité. |
+| Tests et contrats dbt | Pendant `dbt build` | Les tables construites | Je vérifie les règles métier et la structure du résultat. |
+| Fraîcheur dbt | Avec `dbt source freshness` | L'âge du dernier chargement | Une table correcte peut contenir des données trop anciennes. |
+| Soda | À la demande | Les tables accessibles dans l'entrepôt | Je peux vérifier une table créée par un autre outil. |
+| GitHub Actions | Sur les PR et les exécutions planifiées | Les commandes de chaque workflow | Tout le monde voit le résultat des mêmes vérifications. |
+
+**R8. Mes trois choix pour le projet de semestre.** Je garde **Pandera** pour refuser un mauvais lot à l'entrée, **dbt** pour construire et vérifier les résultats métier, et **GitHub Actions** pour lancer automatiquement les contrôles de l'équipe.
