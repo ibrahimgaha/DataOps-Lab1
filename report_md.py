@@ -30,5 +30,5 @@ def main(expected=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("expected", nargs="?", type=Decimal, help="Expected revenue total")
+    parser.add_argument("expected", nargs="?", type=Decimal, help="Expected total revenue for the report")
     raise SystemExit(main(parser.parse_args().expected))
