@@ -9,6 +9,7 @@ from load_raw import WAREHOUSE
 
 
 def main(expected=None):
+    """Print the revenue report and check the optional total."""
     with duckdb.connect(str(WAREHOUSE), read_only=True) as connection:
         rows = connection.execute(
             "select country, revenue from revenue_by_country order by country"
@@ -29,5 +30,5 @@ def main(expected=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("expected", nargs="?", type=Decimal, help="Expected revenue total")
+    parser.add_argument("expected", nargs="?", type=Decimal, help="Expected total revenue for the report")
     raise SystemExit(main(parser.parse_args().expected))

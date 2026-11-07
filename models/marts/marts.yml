@@ -16,13 +16,21 @@ models:
           - accepted_values:
               arguments:
                 values: [France, Germany, Italy, Morocco, Tunisia]
+              config:
+                severity: warn
 
   - name: orders_rejected
     description: Orders flagged by the quality rules when the quarantine table was last built.
 
   - name: revenue_by_country
     description: Revenue for each country in the last successful batch.
+    config:
+      contract:
+        enforced: true
     columns:
       - name: country
+        data_type: varchar
         data_tests:
           - unique
+      - name: revenue
+        data_type: decimal(38,2)

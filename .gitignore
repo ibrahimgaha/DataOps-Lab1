@@ -1,6 +1,7 @@
 .venv/
 .venv-tp3/
 .venv-tp4/
+.venv-soda/
 __pycache__/
 .pytest_cache/
 data/output/
