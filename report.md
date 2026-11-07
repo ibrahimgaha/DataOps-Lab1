@@ -257,3 +257,45 @@ Ces commandes ouvrent la documentation du lignage.
 ```
 
 Ouvrir [la documentation locale](http://localhost:8081), puis choisir `revenue_by_country` et la sélection `+revenue_by_country`. Le chemin principal est `raw.orders → stg_orders → int_orders_checked → orders_clean → revenue_by_country`. La quarantaine part de `int_orders_checked`.
+
+
+## TP4
+
+### Où passent les contrôles
+
+L'ancien workflow GitHub était en échec. Son YAML avait des étapes mal indentées et il cherchait un CSV suivi par DVC. Une machine neuve de GitHub récupère le dépôt Git sans les fichiers bruts du stockage DVC local. Le nouveau workflow utilise donc un échantillon fixe de 35 commandes dans `tests/fixtures/orders_sample.csv`.
+
+1. Le contrat ODCS dans `contracts/orders.yaml` décrit les colonnes et les champs obligatoires. Le contrat peut accepter des prix en centimes, car ces prix restent des nombres.
+2. Pandera vérifie le fichier avant toute connexion à DuckDB. Il refuse le lot si une colonne manque, si une colonne inattendue apparaît ou si moins de 80 % des prix se situent entre 0,01 et 1000. Le client peut rester vide pour que dbt classe la ligne en quarantaine.
+3. dbt applique les six règles métier à chaque commande et teste les modèles. Une seule quantité négative peut aller en quarantaine sans bloquer tout le fichier.
+4. `report_md.py` imprime le tableau de chiffre d'affaires. Avec un total attendu en argument, il retourne le code 1 si le total réel diffère.
+
+### Vérifier sur Windows
+
+Depuis la racine du projet, avec l'environnement Python 3.11 `.venv-tp4` installé.
+
+```powershell
+.\.venv-tp4\Scripts\ruff.exe check .
+.\.venv-tp4\Scripts\python.exe -m pytest
+.\.venv-tp4\Scripts\datacontract.exe lint contracts/orders.yaml
+.\.venv-tp4\Scripts\datacontract.exe test --server ci contracts/orders.yaml
+.\.venv-tp4\Scripts\python.exe load_raw.py tests/fixtures/orders_sample.csv
+.\.venv-tp4\Scripts\dbt.exe build --profiles-dir .
+.\.venv-tp4\Scripts\python.exe report_md.py 8835.40
+```
+
+Pour créer cet environnement sur une autre machine, exécuter `py -3.11 -m venv .venv-tp4`, puis `.\.venv-tp4\Scripts\python.exe -m pip install -r requirements.txt`. TP4 utilise DuckDB 1.x, compatible avec l'outil de contrat. Si l'entrepôt a été créé par DuckDB 2.x, le reconstruire à partir du CSV. Le total de référence est `8835.40`. Passer `9999` à `report_md.py` déclenche le message `REGRESSION` et le code de sortie 1.
+
+Les CSV originaux des jours 2 et 3 manquent. Pour reproduire les deux cas, j'ai utilisé des copies temporaires du jour 1 avec les prix en centimes et avec la colonne `unit_price` renommée `price`.
+
+| Entrée | Contrat | Pandera |
+| --- | --- | --- |
+| Échantillon du jour 1 | Accepté | Accepté |
+| Prix en centimes | Acceptés comme nombres | Lot refusé à cause de l'échelle des prix |
+| Colonne `price` | `unit_price` manquante | `price` en trop et `unit_price` manquante |
+
+### Vérifications sur GitHub
+
+La CI exécute `lint`, puis `python-tests`, puis `data-quality`. Un échec empêche les jobs dépendants de démarrer. Le dernier job ajoute le tableau de revenus au résumé et conserve `run_results.json` dans l'artefact `dbt-results`.
+
+Le workflow Nightly tourne chaque jour à 05 h 00 UTC et peut être lancé à la main. Il reconstruit le projet avec l'échantillon et conserve la documentation dbt dans l'artefact `dbt-docs`.
