@@ -154,3 +154,148 @@ Ces points doivent être corrigés ou vérifiés avant de déclarer que tous les
 Ce TP m'a permis de pratiquer les principales bases du DataOps : le versionnement du code avec Git, le travail sur une branche, la fusion des modifications, le versionnement des données avec DVC, le stockage dans un remote et la restauration de versions précédentes.
 
 L'utilisation conjointe de Git et DVC facilite le partage du projet et améliore la traçabilité des résultats. Pour garantir une reproductibilité complète, il reste important de vérifier le passage des tests, la cohérence des données et le bon fonctionnement du pipeline.
+
+
+## TP3
+
+### Lancer le projet sous PowerShell
+
+Exécuter ces commandes depuis la racine de `dataops-lab1` avec Python 3.11 et le CSV du jour 1 dans `data/raw`.
+
+```powershell
+py -3.11 -m venv .venv-tp3
+.\.venv-tp3\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv-tp3\Scripts\python.exe load_raw.py data/raw/orders_day1.csv
+.\.venv-tp3\Scripts\dbt.exe build --profiles-dir .
+.\.venv-tp3\Scripts\python.exe query.py "select sum(revenue) as total from revenue_by_country"
+```
+
+Si `.venv-tp3` contient déjà les dépendances, commencer au chargement. Utiliser `dbt build` pour exécuter les modèles et leurs tests dans l'ordre du lignage.
+
+### Du CSV au rapport
+
+Dans le TP1, Python lit le CSV, le transforme puis écrit le rapport. Dans le TP3, Python lit le CSV et le charge dans DuckDB. Les transformations SQL s'exécutent ensuite dans DuckDB sous le contrôle de dbt. DuckDB conserve les données dans le fichier local `warehouse.duckdb`.
+
+1. `raw.orders` contient les champs bruts et trois colonnes de provenance.
+2. `stg_orders` donne un type aux champs et normalise les noms de pays.
+3. `int_orders_checked` applique les six règles dans l'ordre. La première règle qui échoue donne le motif.
+4. `orders_clean` et `orders_rejected` séparent les commandes valides des rejets. `revenue_by_country` additionne `quantity * unit_price` par pays à partir des commandes valides.
+
+### Réponses Q1 à Q15
+
+**Q1. Pourquoi charger les champs en texte ?** Une quantité `deux` reste visible dans le brut. Le staging peut la convertir en `NULL` et le modèle de contrôle peut classer la ligne comme `invalid_quantity`. Le type deviné à l'import pourrait varier d'un fichier à l'autre.
+
+**Q2. Pourquoi le calcul naïf donne-t-il le même résultat en SQL et en Python ?** Les deux calculs comptent des lignes qui auraient dû être exclues. La fiabilité dépend des règles métier et des tests qui vérifient leur application.
+
+**Q3. À quoi sert le brut si une règle change ?** On peut corriger le SQL et rejouer dbt sur le lot brut courant, puis comparer les décisions de nettoyage. Pour un lot plus ancien, on recharge son CSV versionné avec DVC.
+
+**Q4. Que changer dans le profil pour un autre entrepôt ?** Il faut choisir l'adaptateur du nouvel entrepôt et renseigner ses paramètres de connexion, comme le compte, la base et le schéma. Un secret vient d'une variable d'environnement ou d'un gestionnaire de secrets. dbt peut le lire avec `env_var()`.
+
+**Q5. Pourquoi conserver la commande 1013 au staging ?** Elle doit entrer dans le calcul du taux de rejet et apparaître en quarantaine avec le motif `invalid_date`.
+
+**Q6. Comment fonctionne la vue de staging ?** DuckDB exécute la requête de la vue quand on la lit. Les conversions sont légères et la vue évite de stocker une copie intermédiaire du lot.
+
+**Q7. Que devient `ref('stg_orders')` ?** dbt le remplace par le nom qualifié de la vue, `"warehouse"."main"."stg_orders"`, dans le SQL compilé.
+
+**Q8. Comment le SQL garde-t-il le premier doublon ?** `partition by order_id` crée un groupe par identifiant. Dans chaque groupe, le tri sur `_row_number` reprend l'ordre du CSV. La ligne de rang 1 reste la première commande et les suivantes sont signalées comme doublons.
+
+**Q9. Où ajouter un chiffre d'affaires par produit ?** Créer `models/marts/revenue_by_product.sql`, partir de `ref('orders_clean')` et regrouper les lignes par `product`. Ce changement se fait en SQL.
+
+**Q10. Que se passe-t-il si on retire la règle des doublons ?** Pour refaire l'expérience de l'étape 5, on lance `dbt build --exclude test_type:unit --profiles-dir .`. Le test `unique_orders_clean_order_id` échoue. dbt saute `revenue_by_country` et son test `unique_revenue_by_country_country`, ce qui conserve le rapport précédent. Avec la suite complète, le test unitaire du doublon détecte aussi la régression, avant la création de `int_orders_checked`.
+
+**Q11. Quels contrôles reprennent ceux du pipeline Python ?**
+
+| Contrôle Python | Équivalent dans TP3 |
+| --- | --- |
+| `check_schema` | Le staging nomme explicitement les champs attendus. DuckDB signale les colonnes manquantes et le test du lot bloque aussi les fichiers sans données. |
+| Six règles de `clean_orders` | Le `case` de `int_orders_checked.sql` renseigne le premier motif de rejet. |
+| `check_reject_rate` | `assert_reject_rate_below_20_percent` arrête le lot si plus de 20 % des lignes sont rejetées. |
+| `rejected_orders.csv` | Table `orders_rejected`. |
+| `PIPELINE STOPPED` | `dbt build` échoue et saute les modèles qui dépendent du contrôle en échec. |
+
+**Q12. D'où viennent les données des tests unitaires ?** Elles sont écrites dans `given` dans le YAML. dbt remplace les lignes d'entrée par ces petits exemples, puis compare la sortie à `expect`. Les cas restent reproductibles en CI même si le fichier du fournisseur change. Dans ce projet, `dbt build` crée d'abord la vue de staging dont dbt lit les types pour préparer les exemples.
+
+**Q13. Quels modèles sont touchés si `country` arrive vide ?** `stg_orders`, `int_orders_checked`, `orders_clean`, `orders_rejected` et `revenue_by_country`. Avec le graphe, on suit ces dépendances en quelques secondes. Avec 200 scripts, il faudrait rechercher puis remonter les références à la main.
+
+**Q14. Que se passe-t-il sur les jours 2 et 3 ?** Les fichiers originaux des jours 2 et 3 manquent dans le dépôt et le stockage DVC local. Les vérifications utilisent deux copies temporaires du jour 1. La première exprime chaque prix en centimes. La seconde renomme `unit_price` en `price`. Les CSV suivis par DVC restent ceux du TP2.
+
+| Vérification | Pipeline Python du TP2 | Pipeline dbt du TP3 |
+| --- | --- | --- |
+| Jour 2 | `check_reject_rate` dépasse la limite Python de 10 %. | Le test `assert_reject_rate_below_20_percent` échoue. |
+| Jour 3 | `Missing columns: ['unit_price']`. | DuckDB signale que `src` ne possède pas la colonne `unit_price` dans `stg_orders`. |
+| Rapport précédent conservé | Oui, les deux contrôles interviennent avant l'écriture du CSV. | Oui, `revenue_by_country` est sauté et garde le total de `8835.40`. |
+| Code de sortie des deux échecs | `1` | `1` |
+
+**Q15. Comment garder les rejets d'un lot bloqué ?** Écrire les rejets dans une table d'audit séparée, identifiée par le fichier et la date de chargement, avant le contrôle du taux. Le contrôle continue de bloquer la publication du chiffre d'affaires.
+
+### Vérifications
+
+Le jour 1 contient 35 lignes, dont 30 valides et 5 rejetées. Le total naïf est `13950.60`. Avec les six règles, le rapport donne le même résultat que la transformation Python.
+
+| Pays | Chiffre d'affaires |
+| --- | ---: |
+| France | 1646.50 |
+| Germany | 542.50 |
+| Italy | 2980.40 |
+| Morocco | 2113.50 |
+| Tunisia | 1552.50 |
+| **Total** | **8835.40** |
+
+La commande TP2 complète s'arrête sur le jour 1 car 5 rejets sur 35 représentent 14,29 %, au-dessus de sa limite de 10 %. La comparaison porte donc sur le résultat des fonctions Python de nettoyage et d'agrégation. Le seuil du TP3 est de 20 %.
+
+Résultat de `dbt build` sur le jour 1 avec dbt Core 1.12.6.
+
+```text
+Done. PASS=14 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=14
+```
+
+Ces commandes ouvrent la documentation du lignage.
+
+```powershell
+.\.venv-tp3\Scripts\dbt.exe docs generate --profiles-dir .
+.\.venv-tp3\Scripts\dbt.exe docs serve --port 8081 --profiles-dir .
+```
+
+Ouvrir [la documentation locale](http://localhost:8081), puis choisir `revenue_by_country` et la sélection `+revenue_by_country`. Le chemin principal est `raw.orders → stg_orders → int_orders_checked → orders_clean → revenue_by_country`. La quarantaine part de `int_orders_checked`.
+
+
+## TP4
+
+### Où passent les contrôles
+
+L'ancien workflow GitHub était en échec. Son YAML avait des étapes mal indentées et il cherchait un CSV suivi par DVC. Une machine neuve de GitHub récupère le dépôt Git sans les fichiers bruts du stockage DVC local. Le nouveau workflow utilise donc un échantillon fixe de 35 commandes dans `tests/fixtures/orders_sample.csv`.
+
+1. Le contrat ODCS dans `contracts/orders.yaml` décrit les colonnes et les champs obligatoires. Le contrat peut accepter des prix en centimes, car ces prix restent des nombres.
+2. Pandera vérifie le fichier avant toute connexion à DuckDB. Il refuse le lot si une colonne manque, si une colonne inattendue apparaît ou si moins de 80 % des prix se situent entre 0,01 et 1000. Le client peut rester vide pour que dbt classe la ligne en quarantaine.
+3. dbt applique les six règles métier à chaque commande et teste les modèles. Une seule quantité négative peut aller en quarantaine sans bloquer tout le fichier.
+4. `report_md.py` imprime le tableau de chiffre d'affaires. Avec un total attendu en argument, il retourne le code 1 si le total réel diffère.
+
+### Vérifier sur Windows
+
+Depuis la racine du projet, avec l'environnement Python 3.11 `.venv-tp4` installé.
+
+```powershell
+.\.venv-tp4\Scripts\ruff.exe check .
+.\.venv-tp4\Scripts\python.exe -m pytest
+.\.venv-tp4\Scripts\datacontract.exe lint contracts/orders.yaml
+.\.venv-tp4\Scripts\datacontract.exe test --server ci contracts/orders.yaml
+.\.venv-tp4\Scripts\python.exe load_raw.py tests/fixtures/orders_sample.csv
+.\.venv-tp4\Scripts\dbt.exe build --profiles-dir .
+.\.venv-tp4\Scripts\python.exe report_md.py 8835.40
+```
+
+Pour créer cet environnement sur une autre machine, exécuter `py -3.11 -m venv .venv-tp4`, puis `.\.venv-tp4\Scripts\python.exe -m pip install -r requirements.txt`. TP4 utilise DuckDB 1.x, compatible avec l'outil de contrat. Si l'entrepôt a été créé par DuckDB 2.x, le reconstruire à partir du CSV. Le total de référence est `8835.40`. Passer `9999` à `report_md.py` déclenche le message `REGRESSION` et le code de sortie 1.
+
+Les CSV originaux des jours 2 et 3 manquent. Pour reproduire les deux cas, j'ai utilisé des copies temporaires du jour 1 avec les prix en centimes et avec la colonne `unit_price` renommée `price`.
+
+| Entrée | Contrat | Pandera |
+| --- | --- | --- |
+| Échantillon du jour 1 | Accepté | Accepté |
+| Prix en centimes | Acceptés comme nombres | Lot refusé à cause de l'échelle des prix |
+| Colonne `price` | `unit_price` manquante | `price` en trop et `unit_price` manquante |
+
+### Vérifications sur GitHub
+
+La CI exécute `lint`, puis `python-tests`, puis `data-quality`. Un échec empêche les jobs dépendants de démarrer. Le dernier job ajoute le tableau de revenus au résumé et conserve `run_results.json` dans l'artefact `dbt-results`.
+
+Le workflow Nightly tourne chaque jour à 05 h 00 UTC et peut être lancé à la main. Il reconstruit le projet avec l'échantillon et conserve la documentation dbt dans l'artefact `dbt-docs`.

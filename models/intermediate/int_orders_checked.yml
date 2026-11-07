@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: int_orders_checked
+    description: Every staged order with the reason for its first failed quality rule.
+
+unit_tests:
+  - name: test_unknown_country_is_rejected
+    model: int_orders_checked
+    given:
+      - input: ref('stg_orders')
+        rows:
+          - {order_id: 1, order_date: "2026-10-05", customer_id: C001, country: Spain, quantity: 1, unit_price: 10.0, _row_number: 1}
+          - {order_id: 2, order_date: "2026-10-05", customer_id: C002, country: Italy, quantity: 1, unit_price: 10.0, _row_number: 2}
+    expect:
+      rows:
+        - {order_id: 1, reject_reason: unknown_country}
+        - {order_id: 2, reject_reason: null}
+
+  - name: test_duplicate_order_keeps_the_first
+    model: int_orders_checked
+    given:
+      - input: ref('stg_orders')
+        rows:
+          - {order_id: 1, order_date: "2026-10-05", customer_id: C001, country: Italy, quantity: 1, unit_price: 10.0, _row_number: 1}
+          - {order_id: 1, order_date: "2026-10-05", customer_id: C001, country: Italy, quantity: 1, unit_price: 10.0, _row_number: 2}
+    expect:
+      rows:
+        - {_row_number: 1, reject_reason: null}
+        - {_row_number: 2, reject_reason: duplicate_order_id}

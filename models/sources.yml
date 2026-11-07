@@ -1,0 +1,8 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Daily CSV files loaded by load_raw.py.
+    tables:
+      - name: orders
+        description: One row per CSV record, with source columns stored as text.
