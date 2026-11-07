@@ -324,7 +324,7 @@ Pour créer l'environnement Soda, exécuter `py -3.11 -m venv .venv-soda`, puis 
 
 ### Les cinq défis
 
-1. **pre-commit** vérifie les fichiers avant le commit. Un import inutilisé déclenche `F401` et un fichier ajouté de 600 000 octets dépasse le seuil de 500 Ko. L'échantillon CSV est exclu du nettoyage des espaces de fin de ligne pour conserver la copie exacte du jour 1.
+1. **pre-commit** vérifie les fichiers avant le commit. Un import inutilisé déclenche `F401` et un fichier ajouté de 600 000 octets dépasse le seuil de 500 Ko. L'échantillon CSV est exclu des deux hooks qui modifient les fins de ligne pour conserver la copie exacte du jour 1.
 2. **SQLFluff** relit le SQL DuckDB après avoir interprété les références Jinja. La règle `AM04` est désactivée pour conserver les projections `SELECT *` de ces modèles internes. La règle `ST06` est désactivée pour conserver l'ordre des colonnes transmis par le staging. Le build garde 14 succès et le total de `8835.40`.
 3. **dbt** exige les colonnes `country` et `revenue` à la sortie. Le contrôle de fraîcheur utilise `_loaded_at` et avertit après 12 heures, puis échoue après 24 heures. Pour simuler une source trop vieille, le test local a décalé l'horodatage dans un entrepôt de test. L'expérience sans `Germany` avertit sans bloquer le rapport. Avec `--store-failures`, la table d'audit montre `Germany` et le nombre de lignes concernées.
 4. **GitHub Actions** publie le total sur la pull request et annule l'exécution précédente quand une nouvelle la remplace. Le filtre Markdown regarde l'ensemble du diff d'une pull request. Un commit Markdown ajouté à une pull request qui contient du code peut donc relancer la CI. Une pull request dont le diff est entièrement Markdown est ignorée.

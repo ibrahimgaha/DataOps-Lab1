@@ -4,6 +4,7 @@ repos:
     hooks:
       - id: check-yaml
       - id: end-of-file-fixer
+        exclude: ^tests/fixtures/orders_sample\.csv$
       - id: trailing-whitespace
         exclude: ^tests/fixtures/orders_sample\.csv$
       - id: check-added-large-files

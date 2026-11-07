@@ -9,6 +9,7 @@ from load_raw import WAREHOUSE
 
 
 def main(expected=None):
+    """Print the revenue report and check the optional total."""
     with duckdb.connect(str(WAREHOUSE), read_only=True) as connection:
         rows = connection.execute(
             "select country, revenue from revenue_by_country order by country"

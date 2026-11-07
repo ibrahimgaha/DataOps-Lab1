@@ -72,4 +72,5 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           python report_md.py 8835.40 > "$RUNNER_TEMP/orders-report.md"
+          printf '\n<!-- CI revision: %s -->\n' "$GITHUB_SHA" >> "$RUNNER_TEMP/orders-report.md"
           gh pr comment "$PR_NUMBER" --body-file "$RUNNER_TEMP/orders-report.md" --edit-last --create-if-none
