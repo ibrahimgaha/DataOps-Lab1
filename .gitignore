@@ -1,5 +1,11 @@
 .venv/
+.venv-tp3/
 __pycache__/
 .pytest_cache/
 data/output/
 data/rejected/
+warehouse.duckdb
+warehouse.duckdb.wal
+target/
+logs/
+.user.yml
