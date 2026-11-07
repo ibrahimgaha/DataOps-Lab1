@@ -344,3 +344,5 @@ Pour créer l'environnement Soda, exécuter `py -3.11 -m venv .venv-soda`, puis 
 | GitHub Actions | Sur les PR et les exécutions planifiées | Les commandes de chaque workflow | Tout le monde voit le résultat des mêmes vérifications. |
 
 **R8. Mes trois choix pour le projet de semestre.** Je garde **Pandera** pour refuser un mauvais lot à l'entrée, **dbt** pour construire et vérifier les résultats métier, et **GitHub Actions** pour lancer automatiquement les contrôles de l'équipe.
+
+Essai du filtre Markdown de GitHub Actions.
